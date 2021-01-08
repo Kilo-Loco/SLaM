@@ -41,7 +41,7 @@ Enter the name of your image:
 my-first-lambda-image
 ```
 
->> Once a Docker image is created, you shouldn't have to run this command again
+> Once a Docker image is created, you shouldn't have to run this command again
 
 Now build and package your code into the Docker image:
 
@@ -51,6 +51,8 @@ $ slam export
 Enter the name of your image:
 my-first-lambda-image
 ```
+
+> Run this command every time you need to package your updated Swift Lambda.
 
 Once the export if finished, you can find the zipped Docker image at `pathToThisRepo/.build/lambda/[PROJECT_NAME]/lambda.zip`
 
