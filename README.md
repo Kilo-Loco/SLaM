@@ -1,6 +1,6 @@
 # Swift Lambda Maker
 
-Swift Lambda Maker, aka SLaM, is a CLI tooled used for creating and packaging AWS Lambda function written in Swift. It can create a new executable Swift Package where you can start coding your Lambda as well as package that Lambda as a zipped Docker image.
+Swift Lambda Maker, aka SLaM, is a CLI tool used for creating and packaging AWS Lambda function written in Swift. It can create a new executable Swift Package where you can start coding your Lambda as well as package that Lambda as a zipped Docker image.
 
 ## Prerequisites
 - [Swift 5.3+](https://swift.org/download/#releases)
