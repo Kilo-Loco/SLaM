@@ -1,4 +1,4 @@
-enum FileTemplate {
+struct  FileTemplate {
     static func packageFileContents(packageName: String) -> String {
         """
         // swift-tools-version:5.3
@@ -7,14 +7,14 @@ enum FileTemplate {
 
         let package = Package(
             name: "\(packageName)",
-            platforms: [.macOS(.v10_13)],
+            platforms: [.macOS(.v11)],
             products: [
                 .executable(
                     name: "\(packageName)",
                     targets: ["\(packageName)"]),
             ],
             dependencies: [
-                .package(url: "https://github.com/swift-server/swift-aws-lambda-runtime.git", .upToNextMajor(from: "0.3.0"))
+                .package(url: "https://github.com/swift-server/swift-aws-lambda-runtime.git", .upToNextMajor(from: "0.4.0"))
             ],
             targets: [
                 .target(
@@ -35,32 +35,30 @@ enum FileTemplate {
         """
         import AWSLambdaEvents
         import AWSLambdaRuntime
-        import Foundation
 
-        Lambda.run { (context, payload: String, completion: @escaping (Result<String, Error>) -> Void) in
-            completion(.success("Hello, \\(payload)"))
+        // MARK: - Run Lambda
+
+        // Support API Gateway's Http API
+        public typealias HttpApiRequest = APIGateway.V2.Request
+        public typealias HttpApiResponse = APIGateway.V2.Response
+
+        // set LOCAL_LAMBDA_SERVER_ENABLED env variable to "true" to start
+        // a local server simulator which will allow local debugging
+
+        Lambda.run { (context: Lambda.Context, request: HttpApiRequest, callback: @escaping (Result<HttpApiResponse, Error>) -> Void) in
+
+            // here is my business code
+            
+            callback(.success(HttpApiResponse(statusCode: .ok, body: "Hello World")))
         }
+
         """
     }
     
     static func dockerFileContents() -> String {
         """
-         FROM swiftlang/swift:nightly-5.3-amazonlinux2
-         RUN yum -y install git \\
-         libuuid-devel \\
-         libicu-devel \\
-         libedit-devel \\
-         libxml2-devel \\
-         sqlite-devel \\
-         python-devel \\
-         ncurses-devel \\
-         curl-devel \\
-         openssl-devel \\
-         tzdata \\
-         libtool \\
-         jq \\
-         tar \\
-         zip
+         FROM swift:5.3.3-amazonlinux2
+         RUN yum -y install git zip
         """
     }
     
@@ -76,10 +74,51 @@ enum FileTemplate {
         rm -rf "$target"
         mkdir -p "$target"
         cp ".build/release/$executable" "$target/"
-        cp -Pv /usr/lib/swift/linux/lib*so* "$target"
+        
+        # add the target deps based on ldd
+        ldd ".build/release/$executable" | grep swift | awk '{print $3}' | xargs cp -Lv -t "$target"
+
         cd "$target"
         ln -s "$executable" "bootstrap"
         zip --symlinks lambda.zip *
+        """
+    }
+    
+    static func SAMTemplate(packageName: String) -> String {
+        """
+        AWSTemplateFormatVersion : '2010-09-09'
+        Transform: AWS::Serverless-2016-10-31
+        Description: A sample SAM template for deploying Lambda functions.
+
+        Resources:
+
+        # Lambda Function
+          apiGatewayFunction:
+            Type: AWS::Serverless::Function
+            Properties:
+              Handler: provided
+              Runtime: provided
+              CodeUri: ../.build/lambda/\(packageName)/lambda.zip
+              
+        # Add an API Gateway event source for the Lambda
+              Events:
+                HttpGet:
+                  Type: HttpApi
+                  Properties:
+                    ApiId: !Ref lambdaApiGateway
+                    Path: '/app'
+                    Method: GET
+                    
+        # Instructs new versions to be published to an alias named "live".
+              AutoPublishAlias: live
+
+          lambdaApiGateway:
+            Type: AWS::Serverless::HttpApi
+
+        Outputs:
+          LambdaApiGatewayEndpoint:
+            Description: 'API Gateway endpoint URL.'
+            Value: !Sub 'https://${lambdaApiGateway}.execute-api.${AWS::Region}.amazonaws.com/app'
         """
     }
 }

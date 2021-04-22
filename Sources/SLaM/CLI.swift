@@ -22,11 +22,12 @@ public struct CLI {
         
         switch arguments[1] {
         case "new":
+            if !checkPrerequisites() {
+                exit(-1)
+            }
             try createNewLambdaProject()
-            
-        case "setup-image":
             try setupDockerImage()
-            
+
         case "build":
             try buildPackageInContainer()
             
@@ -39,6 +40,12 @@ public struct CLI {
             let currentDirectory = try getCurrentDirectory()
             print("📦 Package found at: \(currentDirectory.fullPath)/.build/lambda/\(currentDirectory.currentPath)/lambda.zip")
             
+        case "deploy":
+            try samDeploy()
+            
+        case "-h", "help", "--help":
+            outputHelpText()
+
         default:
             outputHelpText()
         }
@@ -50,10 +57,35 @@ public struct CLI {
         try contents.write(to: url, atomically: true, encoding: .utf8)
     }
     
+    private func checkToolAvailable(cmd: String, tip: String) -> Bool {
+        
+        var result : Bool = true
+        do {
+            try shellOut(to: "which \(cmd)")
+        } catch {
+            let error = error as! ShellOutError
+            
+            if !error.message.contains("not found") {
+                print("'\(cmd)' is required to deploy AWS Lambda functions. You can install it with '\(tip)'")
+            }
+            
+            result = false
+        }
+        
+        return result
+    }
+    private func checkPrerequisites() -> Bool {
+        return  checkToolAvailable(cmd: "aws", tip: "brew install awscli")
+            && checkToolAvailable(cmd: "docker", tip: "https://docs.docker.com/docker-for-mac/install/")
+            && checkToolAvailable(cmd: "sam", tip: "brew tap aws/tap && brew install aws-sam-cli")
+    }
+    
     private func createNewLambdaProject() throws {
         try shellOut(to: "swift package", arguments: ["init", "--type executable"])
         let currentDirectory = try getCurrentDirectory()
         
+        print("🚀 Creating project....")
+
         // Create Dockerfile
         try replaceFile(
             at: "Dockerfile",
@@ -88,20 +120,35 @@ public struct CLI {
             .appending("Tests.swift")
         try shellOut(to: .removeFile(from: "Tests/\(currentDirectory.currentPath)Tests/\(testFileName)"))
         
+        // create SAM template to easily deploy the lambda function
+        try replaceFile(
+            at: "scripts/sam.yml",
+            with: FileTemplate.SAMTemplate(
+                packageName: currentDirectory.currentPath
+            )
+        )
         print("🚀 Project created")
+
+        // create S3 deployment bucket
+        try createDeploymentBucket(
+            bucketName: "\(currentDirectory.currentPath.lowercased())-samclisourcebucket"
+        )
+
     }
     
-    private func promptImageName() throws -> String {
-        print("Enter the name of your image:")
+    private func getDockerImageName() throws -> String {
+        let currentDirectory = try getCurrentDirectory()
+        let imageName = currentDirectory.currentPath.lowercased()
         
-        guard let imageName = readLine() else { throw Error.inputError }
-        
-        return imageName
+        return "\(imageName)-builder"
     }
     
     @discardableResult
     private func setupDockerImage() throws -> String {
-        let imageName = try promptImageName()
+        
+        let imageName = try getDockerImageName()
+        
+        print("🛠 Preparing docker image (\(imageName))...")
         
         try shellOut(to: "docker", arguments: ["build", "-t", imageName, "."])
         
@@ -119,10 +166,10 @@ public struct CLI {
     }
     
     @discardableResult
-    private func buildPackageInContainer(dockerImageName: String? = nil) throws -> String {
-        let imageName = try dockerImageName ?? promptImageName()
+    private func buildPackageInContainer() throws -> String {
         let currentDirectory = try getCurrentDirectory()
-        
+        let imageName = try getDockerImageName()
+
         print("🛠 Building package...")
         
         let output = try shellOut(
@@ -144,9 +191,9 @@ public struct CLI {
     }
     
     private func packageLambda(dockerImageName: String? = nil) throws {
-        let imageName = try dockerImageName ?? promptImageName()
         let currentDirectory = try getCurrentDirectory()
-        
+        let imageName = try getDockerImageName()
+
         print("🗳 Packaging...")
         
         let output = try shellOut(
@@ -164,6 +211,70 @@ public struct CLI {
         
         print("📦 Lambda Packaged")
     }
+    
+    private func samDeploy() throws {
+        print("🐿 Deploying with SAM...")
+        
+        let currentDirectory = try getCurrentDirectory()
+        
+        do {
+            let _ = try shellOut(
+                to: "sam",
+                arguments: [
+                    "deploy",
+                    "--template",
+                    "./scripts/sam.yml",
+                    "--stack-name",
+                    "\(currentDirectory.currentPath)",
+                    "--s3-bucket",
+                    "\(currentDirectory.currentPath.lowercased())-samclisourcebucket",
+                    "--capabilities",
+                    "CAPABILITY_IAM"
+                ]
+            )
+        } catch {
+            let error = error as! ShellOutError
+            
+            if !error.message.starts(with: "Error: No changes to deploy") {
+                print("\(error)")
+            }
+        }
+        
+        print("🐿 ƛ AWS Lambda function deployed")
+
+        let output = try shellOut(
+            to: "aws",
+            arguments: [
+                "cloudformation",
+                "describe-stacks",
+                "--stack-name",
+                "\(currentDirectory.currentPath)",
+                "--query",
+                "Stacks[].Outputs[].OutputValue",
+                "--output",
+                "text"
+            ]
+        )
+        
+        print("You can now call your AWS Lambda at : \(output)" )
+        
+    }
+    
+    private func createDeploymentBucket(bucketName: String) throws {
+        
+        print("🪣 Creating deployment bucket '\(bucketName)' if it does not exist")
+
+        let _ = try shellOut(
+            to: "aws",
+            arguments: [
+                "s3",
+                "mb",
+                "s3://\(bucketName)"
+            ]
+        )
+        print("🪣 Done")
+
+    }
 }
 
 private extension CLI {
@@ -171,15 +282,18 @@ private extension CLI {
         print("""
         SLaM Command Line Interface
         ------------------------------
-        Interact with the SLaM (Swift Lambda Maker) from
-        the command line, to create new Swift Lambda projects,
-        or package your Lambda into a zip file.
+
+        Interact with the SLaM (Swift AWS Lambda Maker) from
+        the command line, to create new Swift AWS Lambda projects,
+        package your AWS Lambda functions into a zip file,
+        or deploy your code to AWS Lambda.
+
         Available commands:
-        - new: Create a new Swift Lambda Package.
-        - setup-image: Create a Docker image.
-        - build: Build Swift Lambda inside Docker image.
-        - package: Package Swift Lambda
-        - export: Builds and packages Swift Lambda
+        - new: Create a new Swift AWS Lambda Package.
+        - build: Build Swift AWS Lambda function (inside Docker image).
+        - package: Package Swift AWS Lambda function
+        - export: Build and package Swift AWS Lambda function
+        - deploy: Deploy to AWS Lambda
         """)
     }
     
