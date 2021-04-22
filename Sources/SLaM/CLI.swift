@@ -42,7 +42,10 @@ public struct CLI {
             
         case "deploy":
             try samDeploy()
-            
+
+        case "invoke":
+            try invoke()
+
         case "-h", "help", "--help":
             outputHelpText()
 
@@ -127,6 +130,13 @@ public struct CLI {
                 packageName: currentDirectory.currentPath
             )
         )
+        
+        // Create HTTP API v2 test event
+        try replaceFile(
+            at: "event.json",
+            with: FileTemplate.HTTPAPIEventTemplate()
+        )
+
         print("🚀 Project created")
 
         // create S3 deployment bucket
@@ -264,16 +274,53 @@ public struct CLI {
         
         print("🪣 Creating deployment bucket '\(bucketName)' if it does not exist")
 
-        let _ = try shellOut(
-            to: "aws",
-            arguments: [
-                "s3",
-                "mb",
-                "s3://\(bucketName)"
-            ]
-        )
+        do {
+            let _ = try shellOut(
+                to: "aws",
+                arguments: [
+                    "s3",
+                    "mb",
+                    "s3://\(bucketName)"
+                ]
+            )
+        } catch {
+            let error = error as! ShellOutError
+            
+            if !error.message.contains("BucketAlreadyOwnedByYou"){
+                print("\(error)")
+                throw error
+            }
+
+        }
         print("🪣 Done")
 
+    }
+    
+    // produce a local (macOS) build of the AWS Lambda function
+    // and start it using LOCAL_LAMBDA_SERVER_ENABLED= true environment variable
+    private func invoke() throws {
+        
+        let currentDirectory = try getCurrentDirectory()
+
+        // produce a local (macOS) build of the AWS Lambda function
+        try shellOut(to: .buildSwiftPackage(withConfiguration: .debug))
+        
+        print("To start the test server, type: LOCAL_LAMBDA_SERVER_ENABLED=true .build/debug/\(currentDirectory.currentPath)")
+        print("Type CTRL-C to stop the server")
+        print("")
+        print("To invoke your function, open another Terminal tab and type : curl -v -X POST --data-binary @./event.json http://localhost:7000/invoke")
+
+        
+        // TODO : start the server as a daemon and provide a mechanism to stop it
+        // ideally :
+        // - start the server
+        // - pass the event
+        // - stop the server
+        // - collect stdout /stderr for debugging
+        
+        //start it using LOCAL_LAMBDA_SERVER_ENABLED=true environment variable
+        //try shellOut(to: "LOCAL_LAMBDA_SERVER_ENABLED=true .build/debug/\(currentDirectory.currentPath)")
+        
     }
 }
 
@@ -294,6 +341,7 @@ private extension CLI {
         - package: Package Swift AWS Lambda function
         - export: Build and package Swift AWS Lambda function
         - deploy: Deploy to AWS Lambda
+        - invoke: invoke the AWS Lambda function locally (simulates an event sent by HTTP API Gateway)
         """)
     }
     

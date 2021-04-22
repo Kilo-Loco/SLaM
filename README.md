@@ -96,4 +96,5 @@ SLaM is developed completely in the open, and contributions are welcomed. [Kilo 
 - remove the need to prepare the docker container (now made automatically when calling `slam new`)
 - add support for SAM and to deploy the AWS Lambda function (`slam deploy`)
 - add sanity checks during scafolding, to ensure prerequisites are met (check installation of `docker`, `aws`, and `sam`CLIs)
+- add preliminary support `slam invoke` to locally invoke and test your AWS Lambda function before to deploy it 
 
