@@ -1,7 +1,7 @@
 struct  FileTemplate {
     static func packageFileContents(packageName: String) -> String {
         """
-        // swift-tools-version:5.3
+        // swift-tools-version:5.4
 
         import PackageDescription
 
@@ -17,7 +17,7 @@ struct  FileTemplate {
                 .package(url: "https://github.com/swift-server/swift-aws-lambda-runtime.git", .upToNextMajor(from: "0.4.0"))
             ],
             targets: [
-                .target(
+                .executableTarget(
                     name: "\(packageName)",
                     dependencies: [
                         .product(name: "AWSLambdaRuntime", package: "swift-aws-lambda-runtime"),
