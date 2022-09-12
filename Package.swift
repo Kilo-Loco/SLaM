@@ -1,19 +1,24 @@
-// swift-tools-version:5.3
+// swift-tools-version:5.6
 
 import PackageDescription
 
 let package = Package(
     name: "SLaM",
+    platforms: [
+        .macOS(.v12)
+    ],     
     products: [
         .executable(name: "slam", targets: ["SLaM"])
     ],
     dependencies: [
-        .package(name: "ShellOut", url: "https://github.com/johnsundell/shellout.git", from: "2.3.0"),
+        .package(url: "https://github.com/johnsundell/shellout.git", .upToNextMajor(from: "2.3.0")),
     ],
     targets: [
-        .target(
+        .executableTarget(
             name: "SLaM",
-            dependencies: ["ShellOut"]
+            dependencies: [
+                .product(name: "ShellOut", package: "ShellOut")
+            ]
         ),
         .testTarget(
             name: "SLaMTests",
