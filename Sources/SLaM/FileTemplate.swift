@@ -1,20 +1,20 @@
 enum FileTemplate {
     static func packageFileContents(packageName: String) -> String {
         """
-        // swift-tools-version:5.3
+        // swift-tools-version:5.6
 
         import PackageDescription
 
         let package = Package(
             name: "\(packageName)",
-            platforms: [.macOS(.v10_13)],
+            platforms: [.macOS(.v12)],
             products: [
                 .executable(
                     name: "\(packageName)",
                     targets: ["\(packageName)"]),
             ],
             dependencies: [
-                .package(url: "https://github.com/swift-server/swift-aws-lambda-runtime.git", .upToNextMajor(from: "0.3.0"))
+                .package(url: "https://github.com/swift-server/swift-aws-lambda-runtime.git", .upToNextMajor(from: "0.5.0"))
             ],
             targets: [
                 .target(
@@ -45,28 +45,15 @@ enum FileTemplate {
     
     static func dockerFileContents() -> String {
         """
-         FROM swiftlang/swift:nightly-5.3-amazonlinux2
-         RUN yum -y install git \\
-         libuuid-devel \\
-         libicu-devel \\
-         libedit-devel \\
-         libxml2-devel \\
-         sqlite-devel \\
-         python-devel \\
-         ncurses-devel \\
-         curl-devel \\
-         openssl-devel \\
-         tzdata \\
-         libtool \\
-         jq \\
-         tar \\
-         zip
+         FROM swift:5.6-amazonlinux2
+         RUN yum -y install git zip
         """
     }
     
     static func packageScriptFileContents() -> String {
         """
         #!/bin/bash
+
         ##===----------------------------------------------------------------------===##
         ##
         ## This source file is part of the SwiftAWSLambdaRuntime open source project
@@ -89,11 +76,13 @@ enum FileTemplate {
         rm -rf "$target"
         mkdir -p "$target"
         cp ".build/release/$executable" "$target/"
+
         # add the target deps based on ldd
         ldd ".build/release/$executable" | grep swift | awk '{print $3}' | xargs cp -Lv -t "$target"
+
         cd "$target"
         ln -s "$executable" "bootstrap"
-        zip --symlinks lambda.zip *
+        zip --symlinks ../lambda.zip *
         """
     }
 }
